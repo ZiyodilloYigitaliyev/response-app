@@ -1,23 +1,16 @@
 import React, { useState, useEffect } from "react";
 import axios, { AxiosHeaders } from "axios";
 import 'bootstrap/dist/css/bootstrap.min.css';  // Bootstrap CSS
-import bootstrap from 'bootstrap';  // Bootstrap JS
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import { Tab } from 'bootstrap';  // Bootstrap JS Tab moduli
-import {
-    Page,
-    Text,
-    View,
-    Document,
-    pdf,
-    PDFDownloadLink,
-    StyleSheet,
-} from "@react-pdf/renderer";
-import { PDFDocument, rgb } from "pdf-lib";
 import JSZip from "jszip";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { saveAs } from "file-saver";
 import "./dashboard.css";
+
+
 
 function Dashboard() {
     const [errorMessage, setErrorMessage] = useState("");
@@ -25,8 +18,12 @@ function Dashboard() {
     const [loading, setLoading] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [fileFields, setFileFields] = useState([]);
+    const [selectedDate, setSelectedDate] = useState(null); // Tanlangan sana
+    const [data, setData] = useState([]); // API'dan olingan ma'lumotlar
+    const [currentPage, setCurrentPage] = useState(1); // Joriy sahifa
+    const [totalPages, setTotalPages] = useState(0); // Jami sahifalar soni
+    const [error, setError] = useState(null);
 
-    const API_URL = "https://scan-app-a3872b370d3e.herokuapp.com/api/questions";
     // Fayl qo'shish funksiyasi
     const addFileField = () => {
         if (fileFields.length < 5) {
@@ -90,6 +87,8 @@ function Dashboard() {
 
             if (!value || isNaN(value) || parseInt(value) <= 0) {
                 alert("Iltimos, to'g'ri savollar sonini kiriting.");
+                // Savollarni o'chirish
+                await fetch("https://scan-app-a3872b370d3e.herokuapp.com/savol/delete-all-questions/", { method: "DELETE" });
                 return;
             }
 
@@ -125,7 +124,7 @@ function Dashboard() {
                 alert("Savollar muvaffaqiyatli yuborildi!");
 
                 // Savollarni o'chirish
-                // await fetch("https://create-test-app-100ceac94608.herokuapp.com/delete-all-questions/", { method: "DELETE" });
+                await fetch("https://scan-app-a3872b370d3e.herokuapp.com/savol/delete-all-questions/", { method: "DELETE" });
             } catch (error) {
                 console.error("Xatolik yuz berdi:", error);
                 alert("Xatolik yuz berdi. Iltimos, keyinroq urinib ko'ring.");
@@ -452,7 +451,9 @@ function Dashboard() {
         setIsLoading(true);
 
         try {
-            const response = await fetch(API_URL);
+            // Kalendardan tanlangan sana
+            const formattedDate = selectedDate.toISOString().split("T")[0];
+            const response = await fetch(`https://scan-app-a3872b370d3e.herokuapp.com/api/questions?date=${formattedDate}&question_filter=false`);
             if (!response.ok) throw new Error("API ma'lumotlarini olishda xatolik yuz berdi");
 
             const data = await response.json();
@@ -483,6 +484,7 @@ function Dashboard() {
         } catch (error) {
             console.error("Xatolik:", error.message);
             alert("Xatolik yuz berdi: " + error.message);
+            
         } finally {
             setIsLoading(false);
         }
@@ -492,7 +494,59 @@ function Dashboard() {
         // JavaScript to show/hide content for different tabs (optional for more complex logic)
         const pillsTab = new Tab(document.getElementById('pills-profile-tab'));
         pillsTab.show(); // Show the Result tab by default
-    }, []); // Empty dependency array ensures this runs once when the component mounts
+    }, []);
+
+    const fetchData = async (date) => {
+        try {
+            setLoading(true);
+            setError(null);
+            const formattedDate = date.toISOString().split("T")[0]; // YYYY-MM-DD format
+            const response = await axios.get(
+                `https://scan-app-a3872b370d3e.herokuapp.com/api/questions?date=${formattedDate}&question_filter=true`
+            );
+            const groupedData = groupBy(response.data || []);
+            setData(groupedData);
+        } catch (err) {
+            console.error("Xatolik yuz berdi:", err);
+            setError("Ma'lumotni yuklashda xatolik yuz berdi");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Group data by questions_class and count questions
+    const groupBy = (data) => {
+        const grouped = data.reduce((acc, item) => {
+            const key = item.questions_class;
+
+            // Extract categories and subjects
+            const categories = Object.values(item.category).join(", ");
+            const subjects = Object.values(item.subject).join(", ");
+
+            if (!acc[key]) {
+                acc[key] = {
+                    questions_class: item.questions_class,
+                    categories,
+                    subjects,
+                    items: [], // List of items for this questions_class
+                };
+            }
+            acc[key].items.push(item); // Add item to the corresponding class group
+            return acc;
+        }, {});
+        return Object.values(grouped);
+    };
+
+    useEffect(() => {
+        fetchData(selectedDate);
+    }, [selectedDate]);
+
+    const handleDateChange = (date) => {
+        setSelectedDate(date);
+    };
+
+
+
     return (
         <div className="container-fluid mt-4">
             <ul className="nav nav-pills mb-3" id="pills-tab" role="tablist">
@@ -517,15 +571,7 @@ function Dashboard() {
                 <div className="tab-pane fade show active" id="pills-home" role="tabpanel" aria-labelledby="pills-home-tab">
                     <div className="container mt-4">
                         <div className="row">
-                            <div className="col-12 col-md-4">
-                                <div className="card">
-                                    <div className="card-body">
-                                        <button className="btn btn-primary" onClick={fetchDataAndGenerateZip} disabled={isLoading}>
-                                            {isLoading ? "Yuklanmoqda..." : "ZIPni Yuklab Olish"}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+
                         </div>
                     </div>
                 </div>
@@ -630,16 +676,54 @@ function Dashboard() {
                 <div className="tab-pane fade" id="pills-contact" role="tabpanel" aria-labelledby="pills-contact-tab">
                     <div className="container mt-4">
                         <div className="row">
-                            <div className="col-12">
-                                <div className="card">
-                                    <div className="card-body">
-                                        <p>Dashboard kontenti...</p>
+                            <div className="container mt-5">
+                                <h3>Dashboard</h3>
+                                <DatePicker
+                                    selected={selectedDate}
+                                    onChange={handleDateChange}
+                                    dateFormat="yyyy-MM-dd"
+                                    className="form-control"
+                                />
+                                <button
+                                    className="btn btn-primary mt-3"
+                                    onClick={() => fetchData(selectedDate)}
+                                >
+                                    Yuklash
+                                </button>
+
+                                {loading ? (
+                                    <p>Yuklanmoqda...</p>
+                                ) : error ? (
+                                    <p className="text-danger">{error}</p>
+                                ) : data.length > 0 ? (
+                                    <div className="row mt-4">
+                                        {data.map((group, index) => (
+                                            <div className="col-md-4 mb-4" key={index}>
+                                                <div className="card">
+                                                    <div className="card-header">
+                                                        <h5>Sinf: {group.questions_class}</h5>
+                                                    </div>
+                                                    <div className="card-body">
+                                                        <p><strong>Kategoriyalar:</strong> {group.categories}</p>
+                                                        <p><strong>Fanlar:</strong> {group.subjects}</p>
+                                                        <p><strong>Savollar soni:</strong> {group.items.length}</p>
+                                                        <button className="btn btn-primary" onClick={fetchDataAndGenerateZip} disabled={isLoading}>
+                                                            {isLoading ? "Yuklanmoqda..." : "ZIPni Yuklab Olish"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
-                                </div>
+                                ) : (
+                                    <p>Hech qanday ma'lumot topilmadi</p>
+                                )}
                             </div>
+
                         </div>
                     </div>
                 </div>
+
             </div>
         </div>
 
