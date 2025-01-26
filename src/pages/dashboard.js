@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios, { AxiosHeaders } from "axios";
 import 'bootstrap/dist/css/bootstrap.min.css';  // Bootstrap CSS
 import DatePicker from "react-datepicker";
@@ -12,16 +12,16 @@ import "./dashboard.css";
 
 
 
+
 function Dashboard() {
     const [errorMessage, setErrorMessage] = useState("");
-    const [forms, setForms] = useState([]); // forms va setForms ni aniqlash
+    const [page, setPage] = useState(1);
+    const [hasNextPage, setHasNextPage] = useState(false);
     const [loading, setLoading] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [fileFields, setFileFields] = useState([]);
-    const [selectedDate, setSelectedDate] = useState(null); // Tanlangan sana
+    const [selectedDate, setSelectedDate] = useState();  // Sana holati
     const [data, setData] = useState([]); // API'dan olingan ma'lumotlar
-    const [currentPage, setCurrentPage] = useState(1); // Joriy sahifa
-    const [totalPages, setTotalPages] = useState(0); // Jami sahifalar soni
     const [error, setError] = useState(null);
 
     // Fayl qo'shish funksiyasi
@@ -35,7 +35,7 @@ function Dashboard() {
             alert("Siz maksimal 5 ta fayl qo'sha olasiz!");
         }
     };
-
+ 
     // Fayl tanlashda ma'lumotni yangilash
     const handleFileChange = (id, field, value) => {
         const updatedFields = fileFields.map((fileField) =>
@@ -71,7 +71,7 @@ function Dashboard() {
 
                 // Serverga yuborish
                 const response = await axios.post(
-                    "https://scan-app-a3872b370d3e.herokuapp.com/savol/yuklash/",
+                    "https://scan-app-9206bf041b06.herokuapp.com/savol/yuklash/",
                     formData,
                     {
                         headers: {
@@ -88,14 +88,30 @@ function Dashboard() {
             if (!value || isNaN(value) || parseInt(value) <= 0) {
                 alert("Iltimos, to'g'ri savollar sonini kiriting.");
                 // Savollarni o'chirish
-                await fetch("https://scan-app-a3872b370d3e.herokuapp.com/savol/delete-all-questions/", { method: "DELETE" });
+                // DELETE so‘rovi yuborish
+            try {
+                const response = await fetch("https://scan-app-9206bf041b06.herokuapp.com/savol/delete-all-questions/", {
+                method: "DELETE",
+                headers: {
+                    "Content-Type": "application/json", // Agar kerak bo'lsa
+                },
+                });
+        
+                if (response.ok) {
+                console.log("Barcha savollar o‘chirildi!");
+                } else {
+                console.error("Savollarni o‘chirishda xatolik yuz berdi", response.status);
+                }
+            } catch (error) {
+                console.error("Tarmoq yoki server xatosi:", error);
+            }
                 return;
             }
 
             try {
                 // Savollarni olish
                 const questionsResponse = await axios.get(
-                    "https://scan-app-a3872b370d3e.herokuapp.com/savol/questions/"
+                    "https://scan-app-9206bf041b06.herokuapp.com/savol/questions/"
                 );
                 const questionsData = questionsResponse.data;
 
@@ -114,7 +130,7 @@ function Dashboard() {
 
                 // Savollarni yuborish
                 await axios.post(
-                    "https://scan-app-a3872b370d3e.herokuapp.com/api/questions",
+                    "https://scan-app-9206bf041b06.herokuapp.com/api/questions",
                     finalData,
                     {
                         headers: { "Content-Type": "application/json" },
@@ -123,8 +139,24 @@ function Dashboard() {
 
                 alert("Savollar muvaffaqiyatli yuborildi!");
 
-                // Savollarni o'chirish
-                await fetch("https://scan-app-a3872b370d3e.herokuapp.com/savol/delete-all-questions/", { method: "DELETE" });
+                // DELETE so‘rovi yuborish
+                try {
+                    const response = await fetch("https://scan-app-9206bf041b06.herokuapp.com/savol/delete-all-questions/", {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json", // Agar kerak bo'lsa
+                    },
+                    });
+            
+                    if (response.ok) {
+                    console.log("Barcha savollar o‘chirildi!");
+                    } else {
+                    console.error("Savollarni o‘chirishda xatolik yuz berdi", response.status);
+                    }
+                } catch (error) {
+                    console.error("Tarmoq yoki server xatosi:", error);
+                }
+                
             } catch (error) {
                 console.error("Xatolik yuz berdi:", error);
                 alert("Xatolik yuz berdi. Iltimos, keyinroq urinib ko'ring.");
@@ -139,22 +171,6 @@ function Dashboard() {
     };
 
 
-    // Rasmni yuklab olish va Base64 formatga aylantirish funksiyasi
-    const fetchImageAsBase64 = async (imageUrl) => {
-        try {
-            const response = await fetch(imageUrl, { mode: "no-cors" });
-            const blob = await response.blob();
-            return await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-        } catch (error) {
-            console.error("Rasmni yuklashda xatolik:", error);
-            return null;
-        }
-    };
 
 
     // Muqova yaratish
@@ -325,9 +341,6 @@ function Dashboard() {
 
         pdf.addPage(); // Keyingi sahifaga o'tish
     };
-
-
-
     // Chegara va sahifa raqamlarini qo'shish funksiyasi
     const addBordersAndPageNumbers = (pdf) => {
         const totalPages = pdf.internal.getNumberOfPages(); // Umumiy sahifalar soni
@@ -354,6 +367,10 @@ function Dashboard() {
         }
     };
 
+
+
+
+    // savollar yaratish
     const renderQuestions = async (item, pdf) => {
         const questionsData = [];
         let currentCategory = ""; // Kategoriya kuzatish
@@ -388,18 +405,18 @@ function Dashboard() {
                     .map((opt) => opt.trim()) // Har bir elementni tozalash
                     .filter((opt) => opt);    // Bo'sh qiymatlarni olib tashlash
             };
-            // const cleanedQuestion = {
-            //     ...question,
-            //     text: question.text.replace(/^\d+\.\s*/, ''), // Savoldan tartib raqamini olib tashlash
-            //     options: formatOptions(question.options) // Variantlarni formatlash
-            // };
+            const cleanedQuestion = {
+                ...question,
+                text: question.text.replace(/^\d+\.\s*/, ''), // Savoldan tartib raqamini olib tashlash
+
+            };
 
             // Variantlarni o'qib olish va bitta qatorda joylashtirish
             const formattedOptions = formatOptions
                 .map((option, idx) => `${String.fromCharCode(65 + idx)}) ${option}`)
                 .join(" | "); // Variantlar bir qatorda ajratilgan
 
-            let questionBlock = `${question.question_id}. ${question.text} \n Variantlar: ${formattedOptions}`;
+            let questionBlock = `${question.question_id}. ${question.cleanedQuestion} \n Variantlar: ${formattedOptions}`;
 
             // Agar rasm bo'lsa, rasmni qo'shish
             if (question.image) {
@@ -445,15 +462,33 @@ function Dashboard() {
         addBordersAndPageNumbers(pdf);
     };
 
+    // Helper function: Fetch image as Base64
+    const fetchImageAsBase64 = async (url) => {
+        try {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error(`Error fetching image from URL: ${url}`, error);
+            return null;
+        }
+    };
 
-    // Ma'lumotlarni yuklash va PDF'ga qo'shish funksiyasi
+
+
+    // fetchDataAndGenerateZip funksiyasini to'g'ri ishlatish uchun selectedDate ni yuborish
     const fetchDataAndGenerateZip = async () => {
         setIsLoading(true);
 
         try {
             // Kalendardan tanlangan sana
             const formattedDate = selectedDate.toISOString().split("T")[0];
-            const response = await fetch(`https://scan-app-a3872b370d3e.herokuapp.com/api/questions?date=${formattedDate}&question_filter=false`);
+            const response = await fetch(`https://scan-app-9206bf041b06.herokuapp.com/api/questions?date=${formattedDate}&question_filter=false`);
             if (!response.ok) throw new Error("API ma'lumotlarini olishda xatolik yuz berdi");
 
             const data = await response.json();
@@ -484,7 +519,7 @@ function Dashboard() {
         } catch (error) {
             console.error("Xatolik:", error.message);
             alert("Xatolik yuz berdi: " + error.message);
-            
+
         } finally {
             setIsLoading(false);
         }
@@ -496,57 +531,81 @@ function Dashboard() {
         pillsTab.show(); // Show the Result tab by default
     }, []);
 
-    const fetchData = async (date) => {
+    const handleDateChange = (date) => {
+        setSelectedDate(date);
+        setPage(1);
+        setData({});
+    };
+    useEffect(() => {
+        if (selectedDate) {
+            fetchData(selectedDate, page);
+        }
+    }, [selectedDate, page]);
+
+    const fetchData = useCallback(async (date, page) => {
         try {
             setLoading(true);
             setError(null);
+
             const formattedDate = date.toISOString().split("T")[0]; // YYYY-MM-DD format
             const response = await axios.get(
-                `https://scan-app-a3872b370d3e.herokuapp.com/api/questions?date=${formattedDate}&question_filter=true`
+                `https://scan-app-9206bf041b06.herokuapp.com/api/questions?date=${formattedDate}&questions_only=true&page=${page}`
             );
-            const groupedData = groupBy(response.data || []);
-            setData(groupedData);
+
+            const newData = response.data?.results || []; // API'dan kelgan ma'lumotlar
+            const groupedData = groupBy(newData);
+
+            // Yangi ma'lumotlarni mavjud ma'lumotlarga qo'shish yoki yangilash, takrorlanishni tekshirish
+            setData((prevData) => {
+                const updatedData = { ...prevData };
+                Object.keys(groupedData).forEach((key) => {
+                    if (updatedData[key]) {
+                        const existingIds = new Set(updatedData[key].map(item => item.list_id));
+                        const filteredGroup = groupedData[key].filter(item => !existingIds.has(item.list_id));
+                        updatedData[key] = [...updatedData[key], ...filteredGroup];
+                    } else {
+                        updatedData[key] = groupedData[key];
+                    }
+                });
+                return updatedData;
+            });
+
+            // Keyingi sahifa mavjudligini tekshirish
+            setHasNextPage(!!response.data.next);
         } catch (err) {
             console.error("Xatolik yuz berdi:", err);
             setError("Ma'lumotni yuklashda xatolik yuz berdi");
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    // Group data by questions_class and count questions
-    const groupBy = (data) => {
-        const grouped = data.reduce((acc, item) => {
-            const key = item.questions_class;
-
-            // Extract categories and subjects
-            const categories = Object.values(item.category).join(", ");
-            const subjects = Object.values(item.subject).join(", ");
-
-            if (!acc[key]) {
-                acc[key] = {
-                    questions_class: item.questions_class,
-                    categories,
-                    subjects,
-                    items: [], // List of items for this questions_class
-                };
+    const groupBy = (items) => {
+        if (!Array.isArray(items)) {
+            throw new Error("Invalid items array.");
+        }
+        return items.reduce((result, item) => {
+            if (!item.question_class || !item.categories || !item.subjects) {
+                return result;
             }
-            acc[key].items.push(item); // Add item to the corresponding class group
-            return acc;
+            const groupKey = `${item.question_class}-${item.categories.join(",")}-${item.subjects.join(",")}`;
+            (result[groupKey] = result[groupKey] || []).push(item);
+            return result;
         }, {});
-        return Object.values(grouped);
     };
 
-    useEffect(() => {
-        fetchData(selectedDate);
-    }, [selectedDate]);
-
-    const handleDateChange = (date) => {
-        setSelectedDate(date);
+    const loadMore = () => {
+        if (hasNextPage) {
+            setPage((prevPage) => prevPage + 1);
+        }
     };
 
-
-
+    const handleClick = () => {
+        setIsLoading(true);
+        setTimeout(() => {
+            setIsLoading(false);
+        }, 5000);
+    };
     return (
         <div className="container-fluid mt-4">
             <ul className="nav nav-pills mb-3" id="pills-tab" role="tablist">
@@ -627,7 +686,8 @@ function Dashboard() {
                                         <option value="Geometriya">Geometriya</option>
                                         <option value="Kimyo">Kimyo</option>
                                         <option value="Fizika">Fizika</option>
-                                        <option value="Ona tili">Ona tili</option>
+                                        <option value="Ona_tili">Ona tili</option>
+                                        <option value="Matematika">Matematika</option>
                                     </select>
                                     <button
                                         type="button"
@@ -650,8 +710,16 @@ function Dashboard() {
                             >
                                 + Fayl qo'shish
                             </button>
-                            <button type="submit" className="btn btn-primary btn-sm w-auto mx-5">
-                                So'rov yuborish
+                            <button
+                                type="submit"
+                                className={`btn btn-primary btn-sm w-auto mx-5 ${isLoading ? "disabled" : ""}`}
+                                disabled={isLoading}
+                            >
+                                {isLoading ? (
+                                    <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                ) : (
+                                    "So'rov yuborish"
+                                )}
                             </button>
                         </div>
 
@@ -686,7 +754,7 @@ function Dashboard() {
                                 />
                                 <button
                                     className="btn btn-primary mt-3"
-                                    onClick={() => fetchData(selectedDate)}
+                                    onClick={() => fetchData(selectedDate, page)}
                                 >
                                     Yuklash
                                 </button>
@@ -695,21 +763,26 @@ function Dashboard() {
                                     <p>Yuklanmoqda...</p>
                                 ) : error ? (
                                     <p className="text-danger">{error}</p>
-                                ) : data.length > 0 ? (
+                                ) : Object.keys(data).length > 0 ? (
                                     <div className="row mt-4">
-                                        {data.map((group, index) => (
+                                        {Object.keys(data).map((groupKey, index) => (
                                             <div className="col-md-4 mb-4" key={index}>
                                                 <div className="card">
                                                     <div className="card-header">
-                                                        <h5>Sinf: {group.questions_class}</h5>
+                                                        <h5>Sinf: {data[groupKey][0]?.question_class}</h5>
                                                     </div>
-                                                    <div className="card-body">
-                                                        <p><strong>Kategoriyalar:</strong> {group.categories}</p>
-                                                        <p><strong>Fanlar:</strong> {group.subjects}</p>
-                                                        <p><strong>Savollar soni:</strong> {group.items.length}</p>
-                                                        <button className="btn btn-primary" onClick={fetchDataAndGenerateZip} disabled={isLoading}>
-                                                            {isLoading ? "Yuklanmoqda..." : "ZIPni Yuklab Olish"}
+                                                    <div className="card-body"> 
+                                                        <p><strong>Kategoriyalar:</strong> {data[groupKey][0]?.categories?.join(", ")}</p>
+                                                        <p><strong>Fanlar:</strong> {data[groupKey][0]?.subjects?.join(", ")}</p>
+                                                        <p><strong>Savollar soni:</strong> {data[groupKey].length}</p>
+                                                        <button
+                                                            className="btn btn-primary mt-3"
+                                                            onClick={() => fetchDataAndGenerateZip(groupKey, selectedDate)} // to'g'ri argumentlar yuboriladi
+                                                            disabled={isLoading} // Yuklash davomida tugma faolsiz bo'ladi
+                                                        >
+                                                            {isLoading ? "Yuklanmoqda..." : "Savollarni Yuklab Olish"}
                                                         </button>
+
                                                     </div>
                                                 </div>
                                             </div>
@@ -718,8 +791,13 @@ function Dashboard() {
                                 ) : (
                                     <p>Hech qanday ma'lumot topilmadi</p>
                                 )}
-                            </div>
 
+                                {hasNextPage && (
+                                    <button className="btn btn-secondary mt-3" onClick={loadMore}>
+                                        Yana yuklash
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

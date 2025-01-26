@@ -23,6 +23,7 @@
     "mathjax": "^3.2.2",
     "node-fetch": "^3.3.2",
     "pdf-lib": "^1.17.1",
+    "pspdfkit": "^2024.8.1",
     "puppeteer": "^24.0.0",
     "react": "^19.0.0",
     "react-bootstrap": "^2.10.7",
